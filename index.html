@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tato & Ryno – Lake Powell Runner</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #060e20; overflow: hidden; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const W = 800, H = 420;
+const GROUND_Y = 340;
+const DOG_X = 90;
+const DOG_W = 56, DOG_H = 46;
+const GRAVITY = 0.58;
+const JUMP_FORCE = -13.5;
+const SPEED_INIT = 4.2;
+const OBS_INTERVAL = 95;
+const TREAT_INTERVAL = 60;
+
+function playBark() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = "sawtooth"; o.frequency.setValueAtTime(520, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(280, ctx.currentTime + 0.12);
+    g.gain.setValueAtTime(0.18, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+    o.start(); o.stop(ctx.currentTime + 0.18);
+  } catch(e) {}
+}
+function playYelp() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = "sine"; o.frequency.setValueAtTime(900, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.3);
+    g.gain.setValueAtTime(0.2, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    o.start(); o.stop(ctx.currentTime + 0.3);
+  } catch(e) {}
+}
+function playCrunch() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    for (let i = 0; i < 3; i++) {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = "square"; o.frequency.setValueAtTime(600 + i * 120, ctx.currentTime + i * 0.04);
+      g.gain.setValueAtTime(0.08, ctx.currentTime + i * 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.04 + 0.06);
+      o.start(ctx.currentTime + i * 0.04); o.stop(ctx.currentTime + i * 0.04 + 0.06);
+    }
+  } catch(e) {}
+}
+function playShield() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = "sine"; o.frequency.setValueAtTime(400, ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.2);
+    g.gain.setValueAtTime(0.15, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    o.start(); o.stop(ctx.currentTime + 0.25);
+  } catch(e) {}
+}
+
+function TatoDog({ y, isJumping, isDead, hasShield }) {
+  const t = Date.now();
+  const lp = Math.sin(t / 75) > 0;
+  const c = { body:"#f8f4ee", fur:"#ffffff", ear:"#e8ddd0", earInner:"#d4c4b0", nose:"#7a5a4a" };
+  return (
+    <g transform={`translate(${DOG_X},${y})`} opacity={isDead ? 0.6 : 1}>
+      {hasShield && <ellipse cx="28" cy="22" rx="34" ry="30" fill="#60c8ff" opacity="0.25"/>}
+      {hasShield && <ellipse cx="28" cy="22" rx="34" ry="30" fill="none" stroke="#60c8ff" strokeWidth="2" opacity="0.6"/>}
+      <path d="M5 22 Q-10 6 -5 -2" stroke={c.ear} strokeWidth="6" fill="none" strokeLinecap="round"/>
+      <path d="M5 22 Q-10 6 -5 -2" stroke={c.fur} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
+      <ellipse cx="27" cy="24" rx="23" ry="17" fill={c.body}/>
+      <ellipse cx="12" cy="18" rx="8" ry="7" fill={c.fur}/>
+      <ellipse cx="27" cy="13" rx="9" ry="7" fill={c.fur}/>
+      <ellipse cx="42" cy="19" rx="8" ry="7" fill={c.fur}/>
+      <ellipse cx="20" cy="28" rx="7" ry="5.5" fill="#f0eae0"/>
+      <ellipse cx="36" cy="28" rx="7" ry="5.5" fill="#f0eae0"/>
+      <ellipse cx="46" cy="15" rx="14" ry="12" fill={c.fur}/>
+      <ellipse cx="40" cy="10" rx="8" ry="7" fill={c.fur}/>
+      <ellipse cx="39" cy="4" rx="8" ry="11" fill={c.ear} transform="rotate(-18,39,4)"/>
+      <ellipse cx="39" cy="4" rx="5.5" ry="8" fill={c.earInner} transform="rotate(-18,39,4)"/>
+      <ellipse cx="39" cy="4" rx="5" ry="7" fill="#d4a870" opacity="0.35" transform="rotate(-18,39,4)"/>
+      <circle cx="50" cy="12" r="3.8" fill="#2a1a0e"/>
+      <circle cx="51.5" cy="10.5" r="1.1" fill="white"/>
+      <ellipse cx="57" cy="17" rx="3.5" ry="2.5" fill={c.nose}/>
+      {isJumping && <ellipse cx="58" cy="22" rx="3" ry="4.5" fill="#e87a7a"/>}
+      <rect x={lp&&!isJumping?"13":"15"} y="37" width="8" height={isJumping?6:11} rx="4" fill={c.ear}/>
+      <rect x={lp&&!isJumping?"24":"22"} y="37" width="8" height={isJumping?6:11} rx="4" fill={c.ear}/>
+      <rect x="33" y="37" width="8" height={isJumping?6:11} rx="4" fill={c.ear}/>
+      <rect x={lp&&!isJumping?"42":"40"} y="37" width="8" height={isJumping?6:11} rx="4" fill={c.ear}/>
+    </g>
+  );
+}
+
+function RynoDog({ y, isJumping, isDead, hasShield }) {
+  const t = Date.now();
+  const lp = Math.sin(t / 75) > 0;
+  const c = { body:"#d4935a", fur:"#e8a870", ear:"#c07840", earInner:"#a86030", nose:"#5a3820" };
+  return (
+    <g transform={`translate(${DOG_X},${y})`} opacity={isDead ? 0.6 : 1}>
+      {hasShield && <ellipse cx="28" cy="22" rx="34" ry="30" fill="#ffb830" opacity="0.2"/>}
+      {hasShield && <ellipse cx="28" cy="22" rx="34" ry="30" fill="none" stroke="#ffb830" strokeWidth="2" opacity="0.6"/>}
+      <path d="M5 22 Q-10 6 -5 -2" stroke={c.ear} strokeWidth="6" fill="none" strokeLinecap="round"/>
+      <path d="M5 22 Q-10 6 -5 -2" stroke={c.fur} strokeWidth="3.5" fill="none" strokeLinecap="round"/>
+      <ellipse cx="27" cy="24" rx="22" ry="16" fill={c.body}/>
+      <ellipse cx="12" cy="18" rx="8" ry="7" fill={c.fur}/>
+      <ellipse cx="27" cy="13" rx="9" ry="7" fill={c.fur}/>
+      <ellipse cx="42" cy="19" rx="8" ry="7" fill={c.fur}/>
+      <ellipse cx="20" cy="28" rx="7" ry="5" fill="#c07840" opacity="0.6"/>
+      <ellipse cx="36" cy="28" rx="7" ry="5" fill="#c07840" opacity="0.6"/>
+      <ellipse cx="46" cy="15" rx="13" ry="11" fill={c.fur}/>
+      <ellipse cx="40" cy="10" rx="8" ry="7" fill={c.fur}/>
+      <ellipse cx="39" cy="4" rx="8" ry="11" fill={c.ear} transform="rotate(-18,39,4)"/>
+      <ellipse cx="39" cy="4" rx="5.5" ry="8" fill={c.earInner} transform="rotate(-18,39,4)"/>
+      <ellipse cx="39" cy="-3" rx="4" ry="4" fill="#8a5020" opacity="0.5" transform="rotate(-18,39,-3)"/>
+      <circle cx="50" cy="12" r="3.8" fill="#1e1008"/>
+      <circle cx="51.5" cy="10.5" r="1.1" fill="white"/>
+      <ellipse cx="57" cy="17" rx="3.5" ry="2.5" fill={c.nose}/>
+      {isJumping && <ellipse cx="58" cy="22" rx="3" ry="4.5" fill="#e87a7a"/>}
+      <rect x={lp&&!isJumping?"13":"15"} y="37" width="8" height={isJumping?6:11} rx="4" fill={c.ear}/>
+      <rect x={lp&&!isJumping?"24":"22"} y="37" width="8" height={isJumping?6:11} rx="4" fill={c.ear}/>
+      <rect x="33" y="37" width="8" height={isJumping?6:11} rx="4" fill={c.ear}/>
+      <rect x={lp&&!isJumping?"42":"40"} y="37" width="8" height={isJumping?6:11} rx="4" fill={c.ear}/>
+    </g>
+  );
+}
+
+function Rock({ x }) {
+  return (
+    <g transform={`translate(${x},${GROUND_Y-42})`}>
+      <ellipse cx="22" cy="38" rx="24" ry="8" fill="#b05828" opacity="0.35"/>
+      <polygon points="2,40 10,14 22,6 36,16 44,40" fill="#c86840"/>
+      <polygon points="6,40 12,20 22,12 34,21 40,40" fill="#e08458"/>
+      <polygon points="12,26 20,14 28,23" fill="#f0a878" opacity="0.55"/>
+    </g>
+  );
+}
+function Cactus({ x }) {
+  return (
+    <g transform={`translate(${x},${GROUND_Y-60})`}>
+      <rect x="14" y="12" width="11" height="52" rx="5.5" fill="#4a7a3a"/>
+      <rect x="1" y="24" width="14" height="9" rx="4.5" fill="#4a7a3a"/>
+      <rect x="1" y="15" width="9" height="18" rx="4.5" fill="#4a7a3a"/>
+      <rect x="25" y="30" width="14" height="9" rx="4.5" fill="#4a7a3a"/>
+      <rect x="30" y="19" width="9" height="20" rx="4.5" fill="#4a7a3a"/>
+      <rect x="14" y="12" width="11" height="52" rx="5.5" fill="#70b060" opacity="0.3"/>
+    </g>
+  );
+}
+function Houseboat({ x }) {
+  return (
+    <g transform={`translate(${x},${GROUND_Y-58})`}>
+      <rect x="0" y="32" width="64" height="20" rx="4" fill="#3a6a8a"/>
+      <rect x="4" y="10" width="56" height="24" rx="3" fill="#e8d4a8"/>
+      <rect x="11" y="14" width="12" height="14" rx="2" fill="#a0c8e0"/>
+      <rect x="32" y="14" width="12" height="14" rx="2" fill="#a0c8e0"/>
+      <polygon points="4,10 32,0 60,10" fill="#c03828"/>
+      <rect x="30" y="0" width="4" height="12" fill="#8a2820"/>
+      <rect x="0" y="48" width="64" height="6" rx="3" fill="#2a5a7a" opacity="0.5"/>
+    </g>
+  );
+}
+function JetSkiWake({ x }) {
+  return (
+    <g transform={`translate(${x},${GROUND_Y-30})`}>
+      <ellipse cx="30" cy="12" rx="28" ry="9" fill="#e03820"/>
+      <ellipse cx="30" cy="9" rx="18" ry="6" fill="#f05840"/>
+      <rect x="16" y="4" width="20" height="8" rx="3" fill="#c02810"/>
+      <circle cx="44" cy="8" r="3" fill="#ffd040"/>
+      <path d="M0 22 Q15 16 30 22 Q45 28 60 22" stroke="white" strokeWidth="2" fill="none" opacity="0.5"/>
+      <path d="M-8 28 Q15 20 30 28 Q48 34 68 26" stroke="white" strokeWidth="1.5" fill="none" opacity="0.3"/>
+    </g>
+  );
+}
+function Bone({ x, y }) {
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <rect x="6" y="7" width="20" height="8" rx="3" fill="#f5e8d0"/>
+      <circle cx="6" cy="7" r="5" fill="#f5e8d0"/>
+      <circle cx="6" cy="15" r="5" fill="#f5e8d0"/>
+      <circle cx="26" cy="7" r="5" fill="#f5e8d0"/>
+      <circle cx="26" cy="15" r="5" fill="#f5e8d0"/>
+      <rect x="6" y="7" width="20" height="8" rx="3" fill="white" opacity="0.4"/>
+    </g>
+  );
+}
+function CompanionToken({ x, y, isRyno }) {
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <circle cx="16" cy="16" r="18" fill={isRyno?"#e8a040":"#80d8ff"} opacity="0.3"/>
+      <circle cx="16" cy="16" r="18" fill="none" stroke={isRyno?"#e8a040":"#60c8ff"} strokeWidth="2" strokeDasharray="4 3"/>
+      {isRyno ? (
+        <>
+          <ellipse cx="16" cy="18" rx="10" ry="8" fill="#d4935a"/>
+          <ellipse cx="16" cy="12" rx="7" ry="6" fill="#e8a870"/>
+          <circle cx="19" cy="12" r="2" fill="#1e1008"/>
+          <ellipse cx="22" cy="14" rx="2" ry="1.5" fill="#5a3820"/>
+        </>
+      ) : (
+        <>
+          <ellipse cx="16" cy="18" rx="10" ry="8" fill="#f8f4ee"/>
+          <ellipse cx="16" cy="12" rx="7" ry="6" fill="#fff"/>
+          <circle cx="19" cy="12" r="2" fill="#2a1a0e"/>
+          <ellipse cx="22" cy="14" rx="2" ry="1.5" fill="#7a5a4a"/>
+        </>
+      )}
+      <text x="16" y="36" textAnchor="middle" fontSize="9" fill={isRyno?"#e8a040":"#60c8ff"} fontWeight="bold">RESCUE</text>
+    </g>
+  );
+}
+
+function getSkyColors(phase) {
+  if (phase < 0.4) return { top:"#1a6fa8", mid:"#4aaad4", bot:"#7bc8e8", sun:"#ffd060", sunOpacity:0.9 };
+  if (phase < 0.7) return { top:"#8a2a10", mid:"#e06830", bot:"#f0a050", sun:"#ff8020", sunOpacity:0.85 };
+  return { top:"#050818", mid:"#0a1535", bot:"#1a2a50", sun:"#ffffa0", sunOpacity:0.7 };
+}
+function getStars(phase) {
+  if (phase < 0.65) return [];
+  const stars = [];
+  const rng = (s) => { let x = Math.sin(s)*43758; return x-Math.floor(x); };
+  for (let i=0;i<30;i++) stars.push({ x:rng(i*7.3)*W, y:rng(i*13.7)*120, r:rng(i*2.1)*1.5+0.5 });
+  return stars;
+}
+
+function App() {
+  const [screen, setScreen] = useState("select");
+  const [character, setCharacter] = useState("tato");
+  const [dogY, setDogY] = useState(GROUND_Y - DOG_H);
+  const [obstacles, setObstacles] = useState([]);
+  const [treats, setTreats] = useState([]);
+  const [companions, setCompanions] = useState([]);
+  const [score, setScore] = useState(0);
+  const [highScore, setHighScore] = useState(0);
+  const [hasShield, setHasShield] = useState(false);
+  const [shieldFlash, setShieldFlash] = useState(false);
+  const [bgOffset, setBgOffset] = useState(0);
+  const [waterOffset, setWaterOffset] = useState(0);
+  const [timePhase, setTimePhase] = useState(0);
+  const [treatCount, setTreatCount] = useState(0);
+
+  const velY = useRef(0);
+  const onGround = useRef(true);
+  const frameCount = useRef(0);
+  const speed = useRef(SPEED_INIT);
+  const animRef = useRef(null);
+  const dogYRef = useRef(GROUND_Y - DOG_H);
+  const obsRef = useRef([]);
+  const treatsRef = useRef([]);
+  const companionsRef = useRef([]);
+  const scoreRef = useRef(0);
+  const shieldRef = useRef(false);
+  const treatCountRef = useRef(0);
+  const charRef = useRef("tato");
+
+  const hitbox = useCallback((ty) => ({ x:DOG_X+10, y:ty+8, w:DOG_W-14, h:DOG_H-10 }), []);
+  const obsHitbox = (obs) => {
+    if (obs.type==="rock") return { x:obs.x+4, y:GROUND_Y-38, w:36, h:38 };
+    if (obs.type==="cactus") return { x:obs.x+6, y:GROUND_Y-56, w:28, h:56 };
+    if (obs.type==="houseboat") return { x:obs.x+4, y:GROUND_Y-54, w:56, h:54 };
+    return { x:obs.x+4, y:GROUND_Y-26, w:56, h:26 };
+  };
+  const collides = (r1,r2) => r1.x<r2.x+r2.w && r1.x+r1.w>r2.x && r1.y<r2.y+r2.h && r1.y+r1.h>r2.y;
+
+  const jump = useCallback(() => {
+    if (onGround.current) { velY.current=JUMP_FORCE; onGround.current=false; playBark(); }
+  }, []);
+
+  useEffect(() => {
+    const h = (e) => { if (e.code==="Space"||e.code==="ArrowUp") { e.preventDefault(); if (screen==="playing") jump(); } };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [screen, jump]);
+
+  const startGame = (char) => {
+    charRef.current = char; setCharacter(char);
+    dogYRef.current = GROUND_Y-DOG_H; obsRef.current=[]; treatsRef.current=[]; companionsRef.current=[];
+    scoreRef.current=0; velY.current=0; onGround.current=true; frameCount.current=0;
+    speed.current=SPEED_INIT; shieldRef.current=false; treatCountRef.current=0;
+    setDogY(GROUND_Y-DOG_H); setObstacles([]); setTreats([]); setCompanions([]);
+    setScore(0); setHasShield(false); setTreatCount(0); setTimePhase(0);
+    setScreen("playing");
+  };
+
+  useEffect(() => {
+    if (screen !== "playing") return;
+    const loop = () => {
+      frameCount.current++;
+      const sc = scoreRef.current;
+      speed.current = SPEED_INIT + Math.floor(sc/300)*0.4;
+      velY.current += GRAVITY;
+      dogYRef.current = Math.min(dogYRef.current+velY.current, GROUND_Y-DOG_H);
+      if (dogYRef.current >= GROUND_Y-DOG_H) { dogYRef.current=GROUND_Y-DOG_H; velY.current=0; onGround.current=true; }
+      else onGround.current=false;
+
+      const types = ["rock","cactus","houseboat","jetski"];
+      if (frameCount.current % OBS_INTERVAL === 0)
+        obsRef.current = [...obsRef.current, { x:W+20, type:types[Math.floor(Math.random()*types.length)], id:Math.random() }];
+      if (frameCount.current % TREAT_INTERVAL === 0) {
+        const ty = Math.random()<0.5 ? GROUND_Y-60 : GROUND_Y-110;
+        treatsRef.current = [...treatsRef.current, { x:W+10, y:ty, id:Math.random() }];
+      }
+      if (frameCount.current % 400 === 200) {
+        const isRyno = charRef.current==="tato";
+        companionsRef.current = [...companionsRef.current, { x:W+10, y:GROUND_Y-100, isRyno, id:Math.random() }];
+      }
+
+      obsRef.current = obsRef.current.map(o=>({...o,x:o.x-speed.current})).filter(o=>o.x>-100);
+      treatsRef.current = treatsRef.current.map(t=>({...t,x:t.x-speed.current})).filter(t=>t.x>-60);
+      companionsRef.current = companionsRef.current.map(c=>({...c,x:c.x-speed.current})).filter(c=>c.x>-60);
+
+      const dog = hitbox(dogYRef.current);
+      treatsRef.current = treatsRef.current.filter(t => {
+        if (collides(dog,{x:t.x,y:t.y,w:32,h:22})) { playCrunch(); treatCountRef.current++; setTreatCount(treatCountRef.current); return false; }
+        return true;
+      });
+      companionsRef.current = companionsRef.current.filter(c => {
+        if (collides(dog,{x:c.x,y:c.y,w:36,h:36})) { shieldRef.current=true; setHasShield(true); playShield(); return false; }
+        return true;
+      });
+
+      for (const obs of obsRef.current) {
+        if (collides(dog, obsHitbox(obs))) {
+          if (shieldRef.current) {
+            shieldRef.current=false; setHasShield(false); setShieldFlash(true);
+            setTimeout(()=>setShieldFlash(false),600);
+            obsRef.current = obsRef.current.filter(o=>o.id!==obs.id);
+            break;
+          }
+          playYelp();
+          setHighScore(prev=>Math.max(prev,scoreRef.current));
+          setScreen("dead");
+          setObstacles([...obsRef.current]); setTreats([...treatsRef.current]); setCompanions([...companionsRef.current]);
+          setDogY(dogYRef.current);
+          return;
+        }
+      }
+
+      scoreRef.current++;
+      setTimePhase(sc<500 ? 0 : sc<1000 ? (sc-500)/500 : 1);
+      setDogY(dogYRef.current); setObstacles([...obsRef.current]);
+      setTreats([...treatsRef.current]); setCompanions([...companionsRef.current]);
+      setScore(scoreRef.current);
+      setBgOffset(p=>(p-speed.current*0.25)%W);
+      setWaterOffset(p=>(p-speed.current*0.65)%500);
+      animRef.current = requestAnimationFrame(loop);
+    };
+    animRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animRef.current);
+  }, [screen, hitbox]);
+
+  const sky = getSkyColors(timePhase);
+  const stars = getStars(timePhase);
+  const isJumping = dogY < GROUND_Y-DOG_H-2;
+  const DogComponent = character==="tato" ? TatoDog : RynoDog;
+
+  if (screen === "select") {
+    return (
+      <div style={{background:"linear-gradient(160deg,#0a1a35,#1a3a60,#0a1a35)",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"Georgia,serif",padding:20}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <div style={{fontSize:"2.6rem",color:"#f5c842",letterSpacing:4,textShadow:"0 0 30px #f5c84255",fontWeight:"bold"}}>TATO & RYNO</div>
+          <div style={{color:"#80c8f0",fontSize:"0.9rem",letterSpacing:3,marginTop:4}}>LAKE POWELL RUNNER</div>
+        </div>
+        <div style={{display:"flex",gap:28,flexWrap:"wrap",justifyContent:"center"}}>
+          {[{id:"tato",label:"TATO",sub:"White Goldendoodle",color:"#80d8ff",border:"#60c8ff"},{id:"ryno",label:"RYNO",sub:"Golden Goldendoodle",color:"#f5c842",border:"#e8a040"}].map(dog=>(
+            <button key={dog.id} onClick={()=>startGame(dog.id)}
+              style={{background:"rgba(255,255,255,0.05)",border:`2px solid ${dog.border}`,borderRadius:16,padding:"24px 32px",cursor:"pointer",color:"white",textAlign:"center",width:180}}
+            >
+              <svg width="100" height="70" viewBox="0 0 56 50" style={{display:"block",margin:"0 auto 12px"}}>
+                {dog.id==="tato"?<TatoDog y={2} isJumping={false} isDead={false} hasShield={false}/>:<RynoDog y={2} isJumping={false} isDead={false} hasShield={false}/>}
+              </svg>
+              <div style={{color:dog.color,fontWeight:"bold",fontSize:"1.2rem",letterSpacing:2}}>{dog.label}</div>
+              <div style={{color:"#aaa",fontSize:"0.75rem",marginTop:4}}>{dog.sub}</div>
+              <div style={{marginTop:14,background:dog.border,color:"#0a1a35",borderRadius:8,padding:"6px 0",fontWeight:"bold",fontSize:"0.85rem"}}>PLAY</div>
+            </button>
+          ))}
+        </div>
+        <div style={{color:"#556688",fontSize:"0.75rem",marginTop:32,letterSpacing:1}}>SPACE / ↑ / TAP to jump</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{background:"#060e20",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"Georgia,serif",userSelect:"none"}}
+      onClick={screen==="playing"?jump:undefined}>
+      <div style={{display:"flex",gap:24,marginBottom:8,alignItems:"center"}}>
+        <div style={{color:"#f5c842",fontSize:"1rem",letterSpacing:1}}>SCORE <b>{score}</b></div>
+        <div style={{color:"#80c8f0",fontSize:"0.85rem"}}>BEST <b>{highScore}</b></div>
+        <div style={{color:"#e8d0a0",fontSize:"0.85rem"}}>🦴 <b>{treatCount}</b></div>
+        {hasShield&&<div style={{color:character==="tato"?"#60c8ff":"#f5c842",fontSize:"0.85rem",animation:"pulse 0.5s infinite"}}>🛡️ SHIELD</div>}
+        <div style={{color:timePhase<0.4?"#ffd060":timePhase<0.7?"#ff8040":"#8080ff",fontSize:"0.8rem"}}>
+          {timePhase<0.4?"☀️ DAY":timePhase<0.7?"🌅 SUNSET":"🌙 NIGHT"}
+        </div>
+      </div>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}
+        style={{borderRadius:14,boxShadow:"0 0 50px #00000099",display:"block",maxWidth:"100%",cursor:"pointer"}}>
+        <defs>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={sky.top}/><stop offset="55%" stopColor={sky.mid}/><stop offset="100%" stopColor={sky.bot}/>
+          </linearGradient>
+          <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={timePhase>0.65?"#0a1a40":timePhase>0.35?"#6a3010":"#1a6aaa"}/>
+            <stop offset="100%" stopColor={timePhase>0.65?"#050e28":timePhase>0.35?"#4a2008":"#0a4a7a"}/>
+          </linearGradient>
+          <linearGradient id="gnd" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#c4683a"/><stop offset="100%" stopColor="#9a4820"/>
+          </linearGradient>
+        </defs>
+        <rect width={W} height={H} fill="url(#sky)"/>
+        {stars.map((s,i)=><circle key={i} cx={s.x} cy={s.y} r={s.r} fill="white" opacity={timePhase>0.65?(timePhase-0.65)*2.5:0}/>)}
+        <circle cx={680} cy={55} r={38} fill={sky.sun} opacity={sky.sunOpacity}/>
+        <circle cx={680} cy={55} r={50} fill={sky.sun} opacity={sky.sunOpacity*0.18}/>
+        {[0,W].map((off,idx)=>(
+          <g key={idx} transform={`translate(${bgOffset*0.4+off},0)`}>
+            <polygon points="0,250 70,148 145,205 220,125 305,185 385,105 460,175 540,250" fill="#be6030" opacity={0.5+timePhase*0.2}/>
+            <polygon points="0,250 70,158 145,215 220,136 305,196 385,116 460,185 540,250" fill="#d07848" opacity="0.28"/>
+          </g>
+        ))}
+        <rect x={0} y={275} width={W} height={52} fill="url(#water)"/>
+        {[0,1,2,3,4].map(i=>(
+          <line key={i} x1={(waterOffset+i*110)%950-100} y1={283+i*7} x2={(waterOffset+i*110+55)%950-100} y2={283+i*7}
+            stroke="white" strokeWidth="1.5" opacity="0.25"/>
+        ))}
+        <rect x={0} y={GROUND_Y} width={W} height={H-GROUND_Y} fill="url(#gnd)"/>
+        <rect x={0} y={GROUND_Y} width={W} height={5} fill="#e08858"/>
+        {[50,150,260,380,490,600,700,760].map((x,i)=><ellipse key={i} cx={x} cy={GROUND_Y+14} rx={7} ry={3} fill="#a04820" opacity="0.4"/>)}
+        {treats.map(t=><Bone key={t.id} x={t.x} y={t.y}/>)}
+        {companions.map(c=><CompanionToken key={c.id} x={c.x} y={c.y} isRyno={c.isRyno}/>)}
+        {obstacles.map(obs=>(
+          <g key={obs.id}>
+            {obs.type==="rock"&&<Rock x={obs.x}/>}
+            {obs.type==="cactus"&&<Cactus x={obs.x}/>}
+            {obs.type==="houseboat"&&<Houseboat x={obs.x}/>}
+            {obs.type==="jetski"&&<JetSkiWake x={obs.x}/>}
+          </g>
+        ))}
+        <g opacity={shieldFlash?0.4:1}>
+          <DogComponent y={dogY} isJumping={isJumping} isDead={screen==="dead"} hasShield={hasShield}/>
+        </g>
+        {screen==="dead"&&(
+          <g>
+            <rect x={0} y={0} width={W} height={H} fill="black" opacity="0.45"/>
+            <rect x={220} y={130} width={360} height={145} rx={14} fill="#0a1020" opacity="0.95"/>
+            <text x={400} y={170} textAnchor="middle" fill="#e05050" fontSize={22} fontFamily="Georgia" fontWeight="bold">
+              {character==="tato"?"Tato down! 🐾":"Ryno down! 🐾"}
+            </text>
+            <text x={400} y={200} textAnchor="middle" fill="white" fontSize={14} fontFamily="Georgia">
+              Score: {score} · Treats: {treatCount} · Best: {highScore}
+            </text>
+            <rect x={270} y={216} width={130} height={34} rx={9} fill="#f5c842" style={{cursor:"pointer"}}
+              onClick={(e)=>{e.stopPropagation();startGame(character);}}/>
+            <text x={335} y={238} textAnchor="middle" fill="#0a1020" fontSize={14} fontFamily="Georgia" fontWeight="bold"
+              style={{cursor:"pointer"}} onClick={(e)=>{e.stopPropagation();startGame(character);}}>Try Again</text>
+            <rect x={410} y={216} width={130} height={34} rx={9} fill="#405080" style={{cursor:"pointer"}}
+              onClick={(e)=>{e.stopPropagation();setScreen("select");}}/>
+            <text x={475} y={238} textAnchor="middle" fill="white" fontSize={14} fontFamily="Georgia" fontWeight="bold"
+              style={{cursor:"pointer"}} onClick={(e)=>{e.stopPropagation();setScreen("select");}}>Switch Dog</text>
+          </g>
+        )}
+      </svg>
+      <div style={{color:"#445566",fontSize:"0.75rem",marginTop:8,letterSpacing:1}}>
+        SPACE / ↑ / TAP to jump · Collect 🦴 bones · Grab rescue tokens for a shield
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
